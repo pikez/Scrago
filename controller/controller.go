@@ -4,7 +4,7 @@ import (
 	"analyzer"
 	"basic"
 	"downloader"
-	"fmt"
+	//"fmt"
 	"middleware"
 	"net/http"
 	"processor"
@@ -12,8 +12,9 @@ import (
 	"time"
 )
 
-var Maxindex uint32 = 1
 var wg sync.WaitGroup //全局wait锁
+
+var logger basic.Logger = basic.NewSimpleLogger() // 日志记录器
 
 type Controller struct {
 	Downloader downloader.GenDownloader //下载器
@@ -22,13 +23,18 @@ type Controller struct {
 	Channel    *middleware.Channel      //管道
 	WorkPool   *middleware.WorkPool     //工作池
 	StopSignal *StopSignal              //停止信号
+	StartUrl   string                   //初始爬行Url
+	Depth      uint32                   //爬行深度
 }
 
-func NewController() *Controller {
-	return &Controller{}
+func NewController(StartUrl string, Depth uint32) *Controller {
+	return &Controller{StartUrl: StartUrl, Depth: Depth}
 }
 
 func (ctrl *Controller) Go() {
+	basic.Config.StartUrl = ctrl.StartUrl
+	basic.InitConfig()
+
 	ctrl.Downloader = downloader.NewDownloader() //初始化各组件，下同
 	ctrl.Analyzer = analyzer.NewAnalyzer()
 	ctrl.Processor = processor.NewProcessor()
@@ -37,7 +43,7 @@ func (ctrl *Controller) Go() {
 	ctrl.StopSignal = NewStopSignal()
 
 	//准备第一次请求
-	primaryreq, err := http.NewRequest(basic.Config["method"], basic.Config["mainurl"], nil)
+	primaryreq, err := http.NewRequest(basic.Config.RequestMethod, basic.Config.StartUrl, nil)
 	basic.Check(err)
 	basereq := basic.NewRequest(primaryreq, 0)
 	ctrl.Channel.ReqChan() <- *basereq
@@ -50,15 +56,16 @@ func (ctrl *Controller) Go() {
 	go ctrl.Monitors()
 
 	wg.Wait()
-	fmt.Println(len(ctrl.Processor.GetVurl()))
+	//fmt.Println(len(ctrl.Processor.GetVurl()))
+	//fmt.Println(ctrl.Processor.GetVurl())
 }
 
 func (ctrl *Controller) DownloaderManager() {
 	defer wg.Done()
 	dwg := new(sync.WaitGroup)
-	dwg.Add(5)
+	dwg.Add(basic.Config.DownloaderNumber)
 	//工作池机制
-	ctrl.WorkPool.Pool(5, func() {
+	ctrl.WorkPool.Pool(basic.Config.DownloaderNumber, func() {
 		for req := range ctrl.Channel.ReqChan() {
 			res := ctrl.Downloader.Download(&req) //res为构造请求类型
 			if res != nil {
@@ -70,16 +77,16 @@ func (ctrl *Controller) DownloaderManager() {
 	dwg.Wait()
 	//请求通道关闭后关闭响应通道
 	close(ctrl.Channel.ResChan())
-	fmt.Println("download quit!")
+	logger.Infoln("download quit!")
 }
 
 func (ctrl *Controller) AnalyzerManager() {
 	defer wg.Done()
 	awg := new(sync.WaitGroup)
-	awg.Add(2)
-	ctrl.WorkPool.Pool(2, func() {
+	awg.Add(basic.Config.AnalyzerNumber)
+	ctrl.WorkPool.Pool(basic.Config.AnalyzerNumber, func() {
 		for res := range ctrl.Channel.ResChan() {
-			Links, Items := ctrl.Analyzer.ParsePage(res.GetRes()) //解析函数解析html页面
+			Links, Items := ctrl.Analyzer.Analyze(res.GetRes()) //解析函数解析html页面
 			//将item放入通道传至持久储存函数
 			for _, item := range Items {
 				ctrl.Channel.ItemChan() <- item
@@ -99,16 +106,16 @@ func (ctrl *Controller) AnalyzerManager() {
 	//同上，发送完毕后关闭
 	close(ctrl.Channel.LinkChan())
 	close(ctrl.Channel.ItemChan())
-	//运行流程的最后一步，所以发送已结束信号
+	//运行流程的最后一步，所以发送已结束信号,为监视器提供信号
 	ctrl.StopSignal.finish()
-	fmt.Println("Analyzer quit!")
+	logger.Infoln("Analyzer quit!")
 }
 
 func (ctrl *Controller) ProcessorManager() {
 	defer wg.Done()
 	pwg := new(sync.WaitGroup)
-	pwg.Add(4)
-	ctrl.WorkPool.Pool(2, func() {
+	pwg.Add(basic.Config.ProcessorNumber)
+	ctrl.WorkPool.Pool(1, func() {
 		for link := range ctrl.Channel.LinkChan() {
 			//flag为判重标志
 			req, flag := ctrl.Processor.DealLink(link)
@@ -116,7 +123,7 @@ func (ctrl *Controller) ProcessorManager() {
 				continue
 			}
 			//判断深度（索引）
-			if req.GetIndex() <= Maxindex {
+			if req.GetIndex() <= ctrl.Depth {
 				ctrl.Channel.ReqChan() <- *req
 			} else {
 				//避免重复关闭通道
@@ -129,28 +136,30 @@ func (ctrl *Controller) ProcessorManager() {
 		}
 		pwg.Done()
 	})
-	ctrl.WorkPool.Pool(2, func() {
+	ctrl.WorkPool.Pool(basic.Config.ProcessorNumber-1, func() {
 		for item := range ctrl.Channel.ItemChan() {
 			ctrl.Processor.DealItem(item)
 		}
 		pwg.Done()
 	})
 	pwg.Wait()
-	fmt.Println("Processor quit!")
+	logger.Infoln("Processor quit!")
 }
 
 func (ctrl *Controller) Monitors() {
 	defer wg.Done()
-	begin := time.Now()
+	logger.Infoln("Spider start! ")
 	for {
-		fmt.Println(time.Now().Sub(begin))
-		fmt.Println("reqchan length", len(ctrl.Channel.ReqChan()))
-		fmt.Println("reschan length :", len(ctrl.Channel.ResChan()))
-		fmt.Println("linkchan length", len(ctrl.Channel.LinkChan()))
-		fmt.Println("itemchan length", len(ctrl.Channel.ItemChan()))
-		time.Sleep(time.Second)
+		logger.Infof("Spider Status: \n"+
+			"reqchan length: %d\n"+
+			"reschan length: %d\n"+
+			"linkchan length: %d\n"+
+			"itemchan length: %d\n",
+			len(ctrl.Channel.ReqChan()), len(ctrl.Channel.ResChan()), len(ctrl.Channel.LinkChan()), len(ctrl.Channel.ItemChan()))
+		time.Sleep(time.Second * 3)
 		if ctrl.StopSignal.ended() {
+			logger.Infof("Spider is Stoped!")
+			break
 		}
 	}
-
 }

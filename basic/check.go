@@ -30,8 +30,8 @@ func CheckLink(link string) string {
 	if u.Scheme == "http" || u.Scheme == "https" {
 		return link
 	}
-	if flag := strings.HasPrefix(link, Config["mainurl"]); flag != true {
-		link = strings.Join([]string{Config["mainurl"], link}, "")
+	if flag := strings.HasPrefix(link, Config.StartUrl); flag != true {
+		link = strings.Join([]string{Config.StartUrl, link}, "")
 		return link
 	}
 	return ""

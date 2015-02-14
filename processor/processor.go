@@ -2,7 +2,6 @@ package processor
 
 import (
 	"basic"
-	//"fmt"
 	"net/http"
 )
 
@@ -26,7 +25,7 @@ func (self *Processor) DealLink(link basic.Link) (*basic.Request, bool) {
 		return nil, false
 	}
 	self.Vurl[link.GetLink()] = true //放入字典
-	httpReq, err := http.NewRequest(basic.Config["method"], link.GetLink(), nil)
+	httpReq, err := http.NewRequest(basic.Config.RequestMethod, link.GetLink(), nil)
 	basic.Check(err)
 	request := basic.NewRequest(httpReq, link.GetIndex()) //转化为构造请求
 	return request, true

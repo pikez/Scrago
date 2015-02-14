@@ -2,14 +2,17 @@ package analyzer
 
 import (
 	"basic"
-	"github.com/PuerkitoBio/goquery"
+	"fmt"
 	"net/http"
-	"strings"
 )
 
 type GenAnalyzer interface {
-	ParsePage(httpRes *http.Response) ([]string, []basic.Item)
+	Analyze(httpRes *http.Response) ([]string, []basic.Item)
 }
+
+type Parser func(httpRes *http.Response) ([]string, []basic.Item)
+
+var parser Parser
 
 type Analyzer struct {
 	linklist []string
@@ -23,24 +26,18 @@ func NewAnalyzer() GenAnalyzer {
 	}
 }
 
+func AddParse(parser Parser) {
+	fmt.Println(parser)
+	parser = parser
+}
+
 //用于解析页面
-func (self *Analyzer) ParsePage(httpRes *http.Response) ([]string, []basic.Item) {
-	doc, _ := goquery.NewDocumentFromResponse(httpRes)
-	doc.Find("a").Each(func(i int, s *goquery.Selection) {
-		link, exits := s.Attr("href")
-		if exits {
-			link = basic.CheckLink(link)
-			if link != "" {
-				self.linklist = append(self.linklist, link)
-			}
-			text := strings.TrimSpace(s.Text())
-			if text != "" {
-				item := make(map[string]interface{})
-				item["标题"] = text
-				self.itemlist = append(self.itemlist, item)
-			}
-		}
-	})
-	httpRes.Body.Close()
+
+func (self *Analyzer) Analyze(httpRes *http.Response) ([]string, []basic.Item) {
+	fmt.Println(parser)
+	if parser == nil {
+		panic("xxx")
+	}
+	self.linklist, self.itemlist = parser(httpRes)
 	return self.linklist, self.itemlist
 }

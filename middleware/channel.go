@@ -13,10 +13,10 @@ type Channel struct {
 
 func NewChannel() *Channel {
 	return &Channel{
-		make(chan basic.Request, 1000),
-		make(chan basic.Response, 1000),
-		make(chan basic.Link, 1000),
-		make(chan basic.Item, 1000),
+		make(chan basic.Request, basic.Config.ReqChanLength),
+		make(chan basic.Response, basic.Config.ResChanLength),
+		make(chan basic.Link, basic.Config.LinkChanLength),
+		make(chan basic.Item, basic.Config.ItemChanLength),
 	}
 }
 
