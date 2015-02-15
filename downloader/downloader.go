@@ -6,6 +6,7 @@ package downloader
 
 import (
 	"basic"
+	"fmt"
 	"net/http"
 )
 
@@ -24,6 +25,10 @@ func NewDownloader() GenDownloader {
 
 //接受构造请求，返回构造响应
 func (self *Downloader) Download(req *basic.Request) *basic.Response {
+	for k, v := range basic.Config.HttpHeader {
+		fmt.Println(k, v)
+		req.GetReq().Header.Set(k, v)
+	}
 	httpRes, err := self.client.Do(req.GetReq())
 	if err != nil {
 		return nil

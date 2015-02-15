@@ -7,9 +7,11 @@ import (
 
 type GenProcessor interface {
 	DealLink(link basic.Link) (*basic.Request, bool)
+	DealItem(item basic.Item, Store Store)
 	GetVurl() map[string]bool
-	DealItem(item basic.Item)
 }
+
+type Store func(item basic.Item)
 
 type Processor struct {
 	Vurl map[string]bool //已访问过的url字典
@@ -31,8 +33,8 @@ func (self *Processor) DealLink(link basic.Link) (*basic.Request, bool) {
 	return request, true
 }
 
-func (self *Processor) DealItem(item basic.Item) {
-
+func (self *Processor) DealItem(item basic.Item, Store Store) {
+	Store(item)
 }
 
 func (self *Processor) GetVurl() map[string]bool {

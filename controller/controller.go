@@ -25,16 +25,17 @@ type Controller struct {
 	StopSignal *StopSignal              //停止信号
 	StartUrl   string                   //初始爬行Url
 	Depth      uint32                   //爬行深度
+	Parser     analyzer.Parser          //解析页面函数
+	Store      processor.Store
 }
 
-func NewController(StartUrl string, Depth uint32) *Controller {
-	return &Controller{StartUrl: StartUrl, Depth: Depth}
+func NewController(StartUrl string, Depth uint32, Parser analyzer.Parser, Store processor.Store) *Controller {
+	return &Controller{StartUrl: StartUrl, Depth: Depth, Parser: Parser, Store: Store}
 }
 
 func (ctrl *Controller) Go() {
 	basic.Config.StartUrl = ctrl.StartUrl
 	basic.InitConfig()
-
 	ctrl.Downloader = downloader.NewDownloader() //初始化各组件，下同
 	ctrl.Analyzer = analyzer.NewAnalyzer()
 	ctrl.Processor = processor.NewProcessor()
@@ -86,7 +87,7 @@ func (ctrl *Controller) AnalyzerManager() {
 	awg.Add(basic.Config.AnalyzerNumber)
 	ctrl.WorkPool.Pool(basic.Config.AnalyzerNumber, func() {
 		for res := range ctrl.Channel.ResChan() {
-			Links, Items := ctrl.Analyzer.Analyze(res.GetRes()) //解析函数解析html页面
+			Links, Items := ctrl.Analyzer.Analyze(res.GetRes(), ctrl.Parser) //解析函数解析html页面
 			//将item放入通道传至持久储存函数
 			for _, item := range Items {
 				ctrl.Channel.ItemChan() <- item
@@ -115,7 +116,7 @@ func (ctrl *Controller) ProcessorManager() {
 	defer wg.Done()
 	pwg := new(sync.WaitGroup)
 	pwg.Add(basic.Config.ProcessorNumber)
-	ctrl.WorkPool.Pool(1, func() {
+	ctrl.WorkPool.Pool(1, func() { //分析link速度很快，基本上不会阻塞，只需分配一个goroutine
 		for link := range ctrl.Channel.LinkChan() {
 			//flag为判重标志
 			req, flag := ctrl.Processor.DealLink(link)
@@ -138,7 +139,7 @@ func (ctrl *Controller) ProcessorManager() {
 	})
 	ctrl.WorkPool.Pool(basic.Config.ProcessorNumber-1, func() {
 		for item := range ctrl.Channel.ItemChan() {
-			ctrl.Processor.DealItem(item)
+			ctrl.Processor.DealItem(item, ctrl.Store)
 		}
 		pwg.Done()
 	})

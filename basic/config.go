@@ -3,24 +3,27 @@ package basic
 import ()
 
 type config struct {
-	Name             string
-	StartUrl         string
-	RequestMethod    string
-	DownloaderNumber int
-	AnalyzerNumber   int
-	ProcessorNumber  int
-	ReqChanLength    int
-	ResChanLength    int
-	LinkChanLength   int
-	ItemChanLength   int
+	flag             bool              //配置是否初始化过的标志
+	Name             string            //爬虫名:)
+	StartUrl         string            //初始Url，会从创建控制器是给与的参数添加
+	RequestMethod    string            //http请求的方法
+	HttpHeader       map[string]string //http请求的header
+	DownloaderNumber int               //下载器数目
+	AnalyzerNumber   int               //分析器数目
+	ProcessorNumber  int               //处理器数目
+	ReqChanLength    int               //请求通道长度
+	ResChanLength    int               //响应通道长度
+	LinkChanLength   int               //链接通道长度
+	ItemChanLength   int               //数据通道长度
 }
 
-var Config config
+var Config *config = new(config)
 
 func InitConfig() {
-	if Config.StartUrl == "" {
-		panic("StartUrl Can not be empty!  ")
+	if flag {
+		return
 	}
+	Config.HttpHeader = make(map[string]string)
 	if Config.Name == "" {
 		Config.Name = "scrago"
 	}
@@ -48,5 +51,5 @@ func InitConfig() {
 	if Config.ItemChanLength == 0 {
 		Config.ItemChanLength = 200
 	}
-
+	flag = true
 }
